@@ -1,45 +1,31 @@
-import path from 'path';
+import { Server } from "socket.io";
+import http from "http";
 import express from "express";
-import dotenv from "dotenv";
-import cookieParser from "cookie-parser";
 
+const app = express();
+const server = http.createServer(app);
 
-import authRoutes from "./routes/auth.routes.js";
-import messageRoutes from "./routes/message.routes.js";
-import userRoutes from "./routes/user.routes.js";
-
-import connectToMongoDB from "./db/connectToMongoDB.js";
-import { app, server } from './socket/socket.js'
-
-
-const PORT = process.env.PORT || 5000 ;
-
-
-const __dirname = path.resolve();
-
-dotenv.config();
-
-// Packets → Stream → Object
-// Internet sends packets.
-// Node reads stream.
-// Express makes object.
-app.use(express.json()); // to parse the incoming requests with JSON payloads ( from req.body )
-app.use(cookieParser()); // parse the cookie to our middleware protectRoute 
-
-
-app.use ("/api/auth", authRoutes)
-app.use ("/api/messages", messageRoutes)
-app.use ("/api/users", userRoutes)
-
-app.use(express.static(path.join(__dirname, "frontend/dist")));
-
-app.use("*",(req, res) => {
-  res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ["websocket"] // ✅ IMPORTANT
 });
 
+const onlineUsers = {};
 
-server.listen(PORT, ()=>{
-    connectToMongoDB();
-     console.log(`Server is running on ${PORT}`) 
+io.on("connection", (socket) => {
+  const userId = socket.handshake.query.userId;
+
+  if (userId) onlineUsers[userId] = socket.id;
+
+  io.emit("getOnlineUsers", Object.keys(onlineUsers));
+
+  socket.on("disconnect", () => {
+    delete onlineUsers[userId];
+    io.emit("getOnlineUsers", Object.keys(onlineUsers));
+  });
 });
 
+export { app, server };
